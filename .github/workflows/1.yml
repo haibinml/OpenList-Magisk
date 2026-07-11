@@ -338,6 +338,7 @@ jobs:
           
           # 创建 Release
           gh release create "${{ env.OPENLIST_VERSION }}" \
+            --repo "${{ github.repository }}" \
             --title "OpenList Magisk Module ${{ env.OPENLIST_VERSION }}" \
             --notes-file release_notes.txt \
             --draft=false \
