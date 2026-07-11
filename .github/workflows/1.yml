@@ -20,19 +20,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 检出仓库代码
+      # 手动检出代码（新版 runner 上 actions/checkout 无法正常创建 .git，改用 git clone）
       - name: 检出仓库代码
-        uses: actions/checkout@v4
-
-      # 修复 git 仓库（新版 runner 上 actions/checkout 无法正常创建 .git）
-      - name: 修复 git 仓库
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if ! git rev-parse --git-dir 2>/dev/null; then
-            git init
-            git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
-            git fetch origin "${{ github.ref_name }}"
-            git reset --hard FETCH_HEAD
-          fi
+          rm -rf .git
+          git init
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+          git fetch origin "${{ github.ref_name }}"
+          git checkout -B main FETCH_HEAD
 
       # 安装依赖工具
       - name: 安装依赖
