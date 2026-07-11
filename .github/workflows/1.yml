@@ -157,7 +157,7 @@ jobs:
           # 检查 Release 是否存在
           RELEASE_EXISTS=false
           if [ "$VERSION_MATCH" = "true" ]; then
-            if gh release view "${{ env.OPENLIST_VERSION }}" &>/dev/null; then
+            if gh release view "${{ env.OPENLIST_VERSION }}" --repo "${{ github.repository }}" &>/dev/null; then
               RELEASE_EXISTS=true
             fi
           fi
@@ -326,23 +326,21 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # 检查 Release 是否已存在
-          if gh release view "${{ env.OPENLIST_VERSION }}" &>/dev/null; then
+          if gh release view "${{ env.OPENLIST_VERSION }}" --repo "${{ github.repository }}" &>/dev/null; then
             echo "Release ${{ env.OPENLIST_VERSION }} 已存在，跳过创建"
             exit 0
           fi
-          
+
           # 创建 Release notes 文件
           echo "Synced with OpenList official release v${{ env.OPENLIST_VERSION }}" > release_notes.txt
           echo "" >> release_notes.txt
           echo "${{ env.OPENLIST_CHANGELOG }}" >> release_notes.txt
-          
+
           # 创建 Release
           gh release create "${{ env.OPENLIST_VERSION }}" \
             --repo "${{ github.repository }}" \
             --title "OpenList Magisk Module ${{ env.OPENLIST_VERSION }}" \
             --notes-file release_notes.txt \
-            --draft=false \
-            --prerelease=false \
             "openlist-magisk-${{ env.OPENLIST_VERSION }}.zip"
           
           echo "Release ${{ env.OPENLIST_VERSION }} 创建成功"
