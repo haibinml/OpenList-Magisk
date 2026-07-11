@@ -24,14 +24,16 @@ jobs:
       - name: 检出仓库代码
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
         run: |
-          python3 -c "
-import urllib.request, json, os, base64
+          python3 << 'PYEOF'
+import urllib.request, json, os, base64, pathlib
 token = os.environ['GITHUB_TOKEN']
-repo = '${{ github.repository }}'
-branch = '${{ github.ref_name }}'
+repo = os.environ['REPO']
+branch = os.environ['BRANCH']
 headers = {
-    'Authorization': f'Bearer {token}',
+    'Authorization': 'Bearer ' + token,
     'Accept': 'application/vnd.github.v3+json',
     'User-Agent': 'OpenList-Builder'
 }
@@ -41,29 +43,25 @@ def api(method, url, data=None):
         req.data = json.dumps(data).encode()
     with urllib.request.urlopen(req) as r:
         return json.loads(r.read().decode())
-# 获取分支最新 commit 的 tree
-base = f'https://api.github.com/repos/{repo}/git'
-ref = api('GET', f'{base}/refs/heads/{branch}')
-commit = api('GET', f'{base}/commits/{ref[\"object\"][\"sha\"]}')
-# 递归获取 tree（?recursive=1 获取所有文件）
-tree = api('GET', f'{base}/trees/{commit[\"tree\"][\"sha\"]}?recursive=1')
-# 下载所有文件
-import pathlib
+base_url = 'https://api.github.com/repos/' + repo + '/git'
+ref = api('GET', base_url + '/refs/heads/' + branch)
+commit = api('GET', base_url + '/commits/' + ref['object']['sha'])
+tree = api('GET', base_url + '/trees/' + commit['tree']['sha'] + '?recursive=1')
 for item in tree['tree']:
     if item['type'] == 'blob':
-        blob = api('GET', f'{base}/blobs/{item[\"sha\"]}')
-        content = base64.b64decode(blob['content'])
+        blob = api('GET', base_url + '/blobs/' + item['sha'])
         p = pathlib.Path(item['path'])
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_bytes(content)
-print(f'检出 {len([t for t in tree[\"tree\"] if t[\"type\"] == \"blob\"])} 个文件')
-"
-          # 初始化 git 供后续 release 使用（仅 .git 目录，不依赖 checkout）
+        p.write_bytes(base64.b64decode(blob['content']))
+count = len([t for t in tree['tree'] if t['type'] == 'blob'])
+print(f'检出 {count} 个文件')
+PYEOF
+          # 初始化 git 供后续 release 使用
           git init
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
-          git fetch origin "${{ github.ref_name }}"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git"
+          git fetch origin "${BRANCH}"
           git add -A
           git commit -m "同步检出文件" --allow-empty
 
@@ -243,6 +241,9 @@ print(f'检出 {len([t for t in tree[\"tree\"] if t[\"type\"] == \"blob\"])} 个
       # 更新配置文件
       - name: 更新配置文件
         if: env.SHOULD_BUILD == 'true'
+        env:
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
         run: |
           # 更新 update.json
           cat > update.json << EOF
@@ -268,15 +269,15 @@ print(f'检出 {len([t for t in tree[\"tree\"] if t[\"type\"] == \"blob\"])} 个
           echo "${{ env.OPENLIST_CHANGELOG }}" > OpenList-Magisk/CHANGELOG.md
 
           # 通过 GitHub API 提交更改（绕过本地 git 兼容性问题）
-          python3 -c "
+          python3 << 'PYEOF'
 import urllib.request, json, os, base64
 token = os.environ['GITHUB_TOKEN']
-repo = '${{ github.repository }}'
-branch = '${{ github.ref_name }}'
-version = '${{ env.OPENLIST_VERSION }}'
+repo = os.environ['REPO']
+branch = os.environ['BRANCH']
+version = os.environ['OPENLIST_VERSION']
 files = ['update.json', 'OpenList-Magisk/module.prop', 'OpenList-Magisk/CHANGELOG.md']
 headers = {
-    'Authorization': f'Bearer {token}',
+    'Authorization': 'Bearer ' + token,
     'Accept': 'application/vnd.github.v3+json',
     'User-Agent': 'OpenList-Builder'
 }
@@ -286,33 +287,28 @@ def api(method, url, data=None):
         req.data = json.dumps(data).encode()
     with urllib.request.urlopen(req) as r:
         return json.loads(r.read().decode())
-base = f'https://api.github.com/repos/{repo}/git'
-# 读取并编码文件
+base_url = 'https://api.github.com/repos/' + repo + '/git'
 blobs = {}
 for path in files:
     with open(path, 'rb') as f:
         content = base64.b64encode(f.read()).decode()
-    blob = api('POST', f'{base}/blobs', {'content': content, 'encoding': 'base64'})
+    blob = api('POST', base_url + '/blobs', {'content': content, 'encoding': 'base64'})
     blobs[path] = blob['sha']
-    print(f'blob: {path} -> {blob[\"sha\"][:7]}')
-# 获取最新 commit
-ref = api('GET', f'{base}/refs/heads/{branch}')
+    print(f'blob: {path} -> {blob["sha"][:7]}')
+ref = api('GET', base_url + '/refs/heads/' + branch)
 latest = ref['object']['sha']
-commit = api('GET', f'{base}/commits/{latest}')
+commit = api('GET', base_url + '/commits/' + latest)
 base_tree = commit['tree']['sha']
-# 创建新 tree
 tree_entries = [{'path': p, 'mode': '100644', 'type': 'blob', 'sha': s} for p, s in blobs.items()]
-new_tree = api('POST', f'{base}/trees', {'base_tree': base_tree, 'tree': tree_entries})['sha']
-# 创建 commit
-new_commit = api('POST', f'{base}/commits', {
-    'message': f'更新模块到 OpenList {version}',
+new_tree = api('POST', base_url + '/trees', {'base_tree': base_tree, 'tree': tree_entries})['sha']
+new_commit = api('POST', base_url + '/commits', {
+    'message': '更新模块到 OpenList ' + version,
     'tree': new_tree,
     'parents': [latest]
 })['sha']
-# 更新分支
-api('PATCH', f'{base}/refs/heads/{branch}', {'sha': new_commit})
+api('PATCH', base_url + '/refs/heads/' + branch, {'sha': new_commit})
 print(f'已提交: {new_commit[:7]}')
-"
+PYEOF
 
       # 打包模块
       - name: 打包模块
