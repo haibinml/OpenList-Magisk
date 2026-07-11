@@ -5,7 +5,7 @@ MODDIR="${0%/*}"
 MODULE_PROP="$MODDIR/module.prop"
 SERVICE_SH="$MODDIR/service.sh"
 OPENLIST_BINARY="__PLACEHOLDER_BINARY_PATH__"
-REPO_URL="https://github.com/Alien-Et/OpenList-Magisk"
+REPO_URL="https://github.com/haibinml/OpenList-Magisk"
 
 # 修复：用字符串替代数组，适配 Ash Shell（不支持数组）
 find_busybox() {
