@@ -27,35 +27,35 @@ jobs:
           REPO: ${{ github.repository }}
           BRANCH: ${{ github.ref_name }}
         run: |
-          python3 << 'PYEOF'
-import urllib.request, json, os, base64, pathlib
-token = os.environ['GITHUB_TOKEN']
-repo = os.environ['REPO']
-branch = os.environ['BRANCH']
-headers = {
-    'Authorization': 'Bearer ' + token,
-    'Accept': 'application/vnd.github.v3+json',
-    'User-Agent': 'OpenList-Builder'
-}
-def api(method, url, data=None):
-    req = urllib.request.Request(url, headers=headers, method=method)
-    if data:
-        req.data = json.dumps(data).encode()
-    with urllib.request.urlopen(req) as r:
-        return json.loads(r.read().decode())
-base_url = 'https://api.github.com/repos/' + repo + '/git'
-ref = api('GET', base_url + '/refs/heads/' + branch)
-commit = api('GET', base_url + '/commits/' + ref['object']['sha'])
-tree = api('GET', base_url + '/trees/' + commit['tree']['sha'] + '?recursive=1')
-for item in tree['tree']:
-    if item['type'] == 'blob':
-        blob = api('GET', base_url + '/blobs/' + item['sha'])
-        p = pathlib.Path(item['path'])
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_bytes(base64.b64decode(blob['content']))
-count = len([t for t in tree['tree'] if t['type'] == 'blob'])
-print(f'检出 {count} 个文件')
-PYEOF
+          python3 -c "
+          import urllib.request, json, os, base64, pathlib
+          token = os.environ['GITHUB_TOKEN']
+          repo = os.environ['REPO']
+          branch = os.environ['BRANCH']
+          headers = {
+              'Authorization': 'Bearer ' + token,
+              'Accept': 'application/vnd.github.v3+json',
+              'User-Agent': 'OpenList-Builder'
+          }
+          def api(method, url, data=None):
+              req = urllib.request.Request(url, headers=headers, method=method)
+              if data:
+                  req.data = json.dumps(data).encode()
+              with urllib.request.urlopen(req) as r:
+                  return json.loads(r.read().decode())
+          base_url = 'https://api.github.com/repos/' + repo + '/git'
+          ref = api('GET', base_url + '/refs/heads/' + branch)
+          commit = api('GET', base_url + '/commits/' + ref['object']['sha'])
+          tree = api('GET', base_url + '/trees/' + commit['tree']['sha'] + '?recursive=1')
+          for item in tree['tree']:
+              if item['type'] == 'blob':
+                  blob = api('GET', base_url + '/blobs/' + item['sha'])
+                  p = pathlib.Path(item['path'])
+                  p.parent.mkdir(parents=True, exist_ok=True)
+                  p.write_bytes(base64.b64decode(blob['content']))
+          count = len([t for t in tree['tree'] if t['type'] == 'blob'])
+          print(f'检出 {count} 个文件')
+          "
           # 初始化 git 供后续 release 使用
           git init
           git config user.name "GitHub Actions"
@@ -242,6 +242,7 @@ PYEOF
       - name: 更新配置文件
         if: env.SHOULD_BUILD == 'true'
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           BRANCH: ${{ github.ref_name }}
         run: |
@@ -269,46 +270,46 @@ PYEOF
           echo "${{ env.OPENLIST_CHANGELOG }}" > OpenList-Magisk/CHANGELOG.md
 
           # 通过 GitHub API 提交更改（绕过本地 git 兼容性问题）
-          python3 << 'PYEOF'
-import urllib.request, json, os, base64
-token = os.environ['GITHUB_TOKEN']
-repo = os.environ['REPO']
-branch = os.environ['BRANCH']
-version = os.environ['OPENLIST_VERSION']
-files = ['update.json', 'OpenList-Magisk/module.prop', 'OpenList-Magisk/CHANGELOG.md']
-headers = {
-    'Authorization': 'Bearer ' + token,
-    'Accept': 'application/vnd.github.v3+json',
-    'User-Agent': 'OpenList-Builder'
-}
-def api(method, url, data=None):
-    req = urllib.request.Request(url, headers=headers, method=method)
-    if data:
-        req.data = json.dumps(data).encode()
-    with urllib.request.urlopen(req) as r:
-        return json.loads(r.read().decode())
-base_url = 'https://api.github.com/repos/' + repo + '/git'
-blobs = {}
-for path in files:
-    with open(path, 'rb') as f:
-        content = base64.b64encode(f.read()).decode()
-    blob = api('POST', base_url + '/blobs', {'content': content, 'encoding': 'base64'})
-    blobs[path] = blob['sha']
-    print(f'blob: {path} -> {blob["sha"][:7]}')
-ref = api('GET', base_url + '/refs/heads/' + branch)
-latest = ref['object']['sha']
-commit = api('GET', base_url + '/commits/' + latest)
-base_tree = commit['tree']['sha']
-tree_entries = [{'path': p, 'mode': '100644', 'type': 'blob', 'sha': s} for p, s in blobs.items()]
-new_tree = api('POST', base_url + '/trees', {'base_tree': base_tree, 'tree': tree_entries})['sha']
-new_commit = api('POST', base_url + '/commits', {
-    'message': '更新模块到 OpenList ' + version,
-    'tree': new_tree,
-    'parents': [latest]
-})['sha']
-api('PATCH', base_url + '/refs/heads/' + branch, {'sha': new_commit})
-print(f'已提交: {new_commit[:7]}')
-PYEOF
+          python3 -c "
+          import urllib.request, json, os, base64
+          token = os.environ['GITHUB_TOKEN']
+          repo = os.environ['REPO']
+          branch = os.environ['BRANCH']
+          version = os.environ['OPENLIST_VERSION']
+          files = ['update.json', 'OpenList-Magisk/module.prop', 'OpenList-Magisk/CHANGELOG.md']
+          headers = {
+              'Authorization': 'Bearer ' + token,
+              'Accept': 'application/vnd.github.v3+json',
+              'User-Agent': 'OpenList-Builder'
+          }
+          def api(method, url, data=None):
+              req = urllib.request.Request(url, headers=headers, method=method)
+              if data:
+                  req.data = json.dumps(data).encode()
+              with urllib.request.urlopen(req) as r:
+                  return json.loads(r.read().decode())
+          base_url = 'https://api.github.com/repos/' + repo + '/git'
+          blobs = {}
+          for path in files:
+              with open(path, 'rb') as f:
+                  content = base64.b64encode(f.read()).decode()
+              blob = api('POST', base_url + '/blobs', {'content': content, 'encoding': 'base64'})
+              blobs[path] = blob['sha']
+              print('blob: ' + path + ' -> ' + blob['sha'][:7])
+          ref = api('GET', base_url + '/refs/heads/' + branch)
+          latest = ref['object']['sha']
+          commit = api('GET', base_url + '/commits/' + latest)
+          base_tree = commit['tree']['sha']
+          tree_entries = [{'path': p, 'mode': '100644', 'type': 'blob', 'sha': s} for p, s in blobs.items()]
+          new_tree = api('POST', base_url + '/trees', {'base_tree': base_tree, 'tree': tree_entries})['sha']
+          new_commit = api('POST', base_url + '/commits', {
+              'message': '更新模块到 OpenList ' + version,
+              'tree': new_tree,
+              'parents': [latest]
+          })['sha']
+          api('PATCH', base_url + '/refs/heads/' + branch, {'sha': new_commit})
+          print('已提交: ' + new_commit[:7])
+          "
 
       # 打包模块
       - name: 打包模块
